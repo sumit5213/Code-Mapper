@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { OrganizationSwitcher, UserButton } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
 import { cookies } from "next/headers";
@@ -17,12 +18,12 @@ export default async function WorkspaceLayout({ children }: LayoutProps<"/">) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex h-9 shrink-0 items-center gap-3 border-b border-line bg-surface px-3">
-        <span className="font-mono text-xs font-semibold tracking-tight">codemapper</span>
+        <Link href="/dashboard" className="font-mono text-xs font-semibold tracking-tight hover:text-accent transition-colors">codemapper</Link>
         <span className="text-line">/</span>
         <OrganizationSwitcher
           hidePersonal
-          afterSelectOrganizationUrl="/"
-          afterCreateOrganizationUrl="/"
+          afterSelectOrganizationUrl="/dashboard"
+          afterCreateOrganizationUrl="/dashboard"
           afterLeaveOrganizationUrl="/start"
         />
         <div className="ml-auto flex items-center gap-3">

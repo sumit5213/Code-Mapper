@@ -11,8 +11,14 @@ const LIST_LIMIT = 100;
 type Tally = Status | "stale";
 const TALLY_ORDER: Tally[] = ["running", "queued", "stale", "complete", "failed"];
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ repo?: string }>;
+}) {
   const { sessionClaims } = await auth();
+  const params = await searchParams;
+  const initialUrl = params?.repo;
 
   // Read off the token, never fetched from Clerk. If the claim is missing the
   // session token hasn't been customised yet, and that should be obvious.
@@ -40,7 +46,7 @@ export default async function DashboardPage() {
             ? `Latest ${LIST_LIMIT} analyses`
             : `${rows.length} ${rows.length === 1 ? "analysis" : "analyses"}`}
         </span>
-        <SubmitForm />
+        <SubmitForm initialUrl={initialUrl} />
         {rows.length > 0 && (
           <ul className="ml-auto flex items-center gap-3 text-xs text-fg-muted tabular-nums">
             {TALLY_ORDER.filter((s) => counts.has(s)).map((s) => (

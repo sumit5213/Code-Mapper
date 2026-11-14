@@ -5,12 +5,13 @@ import { submitAnalysis, type FormState } from "@/app/(workspace)/actions";
 
 const INITIAL: FormState = { error: null };
 
-export function SubmitForm() {
+export function SubmitForm({ initialUrl }: { initialUrl?: string } = {}) {
   const [state, action, pending] = useActionState(submitAnalysis, INITIAL);
   return (
     <form action={action} className="flex min-w-0 items-center gap-2">
       <input
         name="url"
+        defaultValue={initialUrl}
         required
         autoComplete="off"
         spellCheck={false}
