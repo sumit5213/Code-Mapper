@@ -4,7 +4,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { cookies } from "next/headers";
 import { parseTheme, THEME_COOKIE } from "@/lib/theme";
 import "./globals.css";
-import { Logo } from "@/components/Logo";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
