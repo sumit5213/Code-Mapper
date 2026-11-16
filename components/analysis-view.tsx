@@ -26,6 +26,12 @@ import { Shell } from "./shell";
 // has open. Everything either side
 // shows is derived from the parse output already in the browser, so nothing
 // here makes a request except the one Explain asks for.
+type MapSnapshot = {
+  open: ReadonlyMap<string, number>;
+  selection: Selection;
+  positions: ReadonlyMap<string, { x: number; y: number }>;
+};
+
 export function AnalysisView({
   files,
   edges,
@@ -48,9 +54,20 @@ export function AnalysisView({
 }) {
   const folding = useMemo(() => foldDirectories(files), [files]);
   const byPath = useMemo(() => new Map(files.map((f) => [f.path, f])), [files]);
-  const [open, setOpen] = useState<ReadonlyMap<string, number>>(() => new Map());
   const [refit, setRefit] = useState(0);
-  const [selection, setSelection] = useState<Selection>(null);
+
+  // Single centralized history state for the map: open panels, selections, and dragged node positions
+  const [history, setHistory] = useState<{
+    past: MapSnapshot[];
+    present: MapSnapshot;
+    future: MapSnapshot[];
+  }>(() => ({
+    past: [],
+    present: { open: new Map(), selection: null, positions: new Map() },
+    future: [],
+  }));
+  const { open, selection, positions } = history.present;
+
   const [hover, setHover] = useState<Selection>(null);
   // Held here rather than in the pane so it outlives every change of selection.
   const [tab, setTab] = useState<Tab>("structure");
@@ -106,40 +123,124 @@ export function AnalysisView({
 
   const toggleCategory = useCallback((c: string) => setCategory((prev) => (prev === c ? null : c)), []);
 
+  const undo = useCallback(() => {
+    let openChanged = false;
+    setHistory((curr) => {
+      if (curr.past.length === 0) return curr;
+      const previous = curr.past[curr.past.length - 1];
+      const newPast = curr.past.slice(0, -1);
+      if (previous.open !== curr.present.open) {
+        openChanged = true;
+      }
+      return {
+        past: newPast,
+        present: previous,
+        future: [curr.present, ...curr.future],
+      };
+    });
+    if (openChanged) setRefit((n) => n + 1);
+  }, []);
+
+  const redo = useCallback(() => {
+    let openChanged = false;
+    setHistory((curr) => {
+      if (curr.future.length === 0) return curr;
+      const next = curr.future[0];
+      const newFuture = curr.future.slice(1);
+      if (next.open !== curr.present.open) {
+        openChanged = true;
+      }
+      return {
+        past: [...curr.past, curr.present],
+        present: next,
+        future: newFuture,
+      };
+    });
+    if (openChanged) setRefit((n) => n + 1);
+  }, []);
+
+  const updatePositions = useCallback(
+    (newPositions: ReadonlyMap<string, { x: number; y: number }>) => {
+      setHistory((curr) => ({
+        past: [...curr.past.slice(-30), curr.present],
+        present: {
+          ...curr.present,
+          positions: newPositions,
+        },
+        future: [],
+      }));
+    },
+    [],
+  );
+
   // Clicking a folded node is the one click it has, so opening it also selects
   // the panel it becomes.
   const openGroup = useCallback((id: string) => {
-    setOpen((prev) => new Map(prev).set(id, 0));
+    setHistory((curr) => ({
+      past: [...curr.past.slice(-30), curr.present],
+      present: {
+        ...curr.present,
+        open: new Map(curr.present.open).set(id, 0),
+        selection: { kind: "group", id },
+      },
+      future: [],
+    }));
     setRefit((n) => n + 1);
-    setSelection({ kind: "group", id });
   }, []);
 
   const closeGroup = useCallback(
     (id: string) => {
-      setOpen((prev) => {
-        const next = new Map(prev);
+      setHistory((curr) => {
+        const next = new Map(curr.present.open);
         next.delete(id);
-        return next;
-      });
-      // A selection inside a folded-away panel has nothing left to point at.
-      setSelection((prev) => {
-        if (prev?.kind === "group") return prev.id === id ? null : prev;
-        if (prev?.kind === "file") {
-          const dir = folding.groupOf.get(prev.path);
-          return dir !== undefined && groupId(dir) === id ? null : prev;
+        // A selection inside a folded-away panel has nothing left to point at.
+        let nextSelection = curr.present.selection;
+        if (nextSelection?.kind === "group" && nextSelection.id === id) nextSelection = null;
+        if (nextSelection?.kind === "file") {
+          const dir = folding.groupOf.get(nextSelection.path);
+          if (dir !== undefined && groupId(dir) === id) nextSelection = null;
         }
-        return prev;
+        return {
+          past: [...curr.past.slice(-30), curr.present],
+          present: {
+            ...curr.present,
+            open: next,
+            selection: nextSelection,
+          },
+          future: [],
+        };
       });
+      setRefit((n) => n + 1);
     },
     [folding],
   );
 
   const toggleFile = useCallback((path: string) => {
-    setSelection((prev) => (prev?.kind === "file" && prev.path === path ? null : { kind: "file", path }));
+    setHistory((curr) => {
+      const nextSelection: Selection =
+        curr.present.selection?.kind === "file" && curr.present.selection.path === path ? null : { kind: "file", path };
+      return {
+        past: [...curr.past.slice(-30), curr.present],
+        present: {
+          ...curr.present,
+          selection: nextSelection,
+        },
+        future: [],
+      };
+    });
   }, []);
 
   const scroll = useCallback((id: string, offset: number) => {
-    setOpen((prev) => (prev.has(id) ? new Map(prev).set(id, Math.max(0, offset)) : prev));
+    setHistory((curr) => {
+      if (!curr.present.open.has(id)) return curr;
+      return {
+        ...curr,
+        present: {
+          ...curr.present,
+          open: new Map(curr.present.open).set(id, Math.max(0, offset)),
+        },
+      };
+    });
   }, []);
 
   // A path clicked in the pane becomes the selection on the map, and the map
@@ -155,11 +256,25 @@ export function AnalysisView({
       const index = ranked.indexOf(path);
       const current = open.get(id);
       const first = current === undefined ? null : clampOffset(current, ranked.length);
-      if (first === null || index < first || index >= first + MAX_ROWS) {
-        setOpen(new Map(open).set(id, index - Math.floor(MAX_ROWS / 2)));
-        if (current === undefined) setRefit((n) => n + 1);
-      }
-      setSelection({ kind: "file", path });
+
+      let shouldRefit = false;
+      setHistory((curr) => {
+        let nextOpen = curr.present.open;
+        if (first === null || index < first || index >= first + MAX_ROWS) {
+          nextOpen = new Map(curr.present.open).set(id, index - Math.floor(MAX_ROWS / 2));
+          if (current === undefined) shouldRefit = true;
+        }
+        return {
+          past: [...curr.past.slice(-30), curr.present],
+          present: {
+            ...curr.present,
+            open: nextOpen,
+            selection: { kind: "file", path },
+          },
+          future: [],
+        };
+      });
+      if (shouldRefit) setRefit((n) => n + 1);
       // The row under the pointer is about to be replaced, and a removed
       // element never reports the pointer leaving it.
       setHover(null);
@@ -167,7 +282,19 @@ export function AnalysisView({
     [folding, byPath, open],
   );
 
-  const deselect = useCallback(() => setSelection(null), []);
+  const deselect = useCallback(() => {
+    setHistory((curr) => {
+      if (curr.present.selection === null) return curr;
+      return {
+        past: [...curr.past.slice(-30), curr.present],
+        present: {
+          ...curr.present,
+          selection: null,
+        },
+        future: [],
+      };
+    });
+  }, []);
 
   return (
     <Shell
@@ -193,6 +320,12 @@ export function AnalysisView({
                 hover={hover}
                 refit={refit}
                 category={category}
+                positions={positions}
+                canUndo={history.past.length > 0}
+                canRedo={history.future.length > 0}
+                onUndo={undo}
+                onRedo={redo}
+                onPositionsChange={updatePositions}
                 onOpen={openGroup}
                 onClose={closeGroup}
                 onSelectFile={toggleFile}

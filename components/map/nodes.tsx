@@ -59,7 +59,7 @@ export function FoldedNodeView({ id, data }: NodeProps<FoldedNode>) {
       title={data.dir}
       onMouseEnter={() => hover({ kind: "group", id })}
       onMouseLeave={() => hover(null)}
-      className={`flex size-full cursor-pointer flex-col justify-center gap-[2px] rounded-[4px] border bg-surface ${
+      className={`flex size-full cursor-grab active:cursor-grabbing flex-col justify-center gap-[2px] rounded-[4px] border bg-surface ${
         isHovered ? "border-accent" : "border-line"
       } ${dim ? DIM : ""}`}
       style={{ paddingInline: PAD_X }}
@@ -118,7 +118,7 @@ export function PanelNodeView({ id, data }: NodeProps<PanelNode>) {
         onMouseEnter={() => hover({ kind: "group", id })}
         onMouseLeave={() => hover(null)}
         title={`${data.dir} — click to fold`}
-        className={`flex shrink-0 flex-col justify-center gap-[2px] border-b border-line bg-raised text-left hover:bg-line ${
+        className={`flex shrink-0 cursor-grab active:cursor-grabbing flex-col justify-center gap-[2px] border-b border-line bg-raised text-left hover:bg-line ${
           whole || !anyLit ? "" : DIM
         }`}
         style={{ height: PANEL_HEADER_HEIGHT, paddingInline: PAD_X }}
@@ -131,8 +131,8 @@ export function PanelNodeView({ id, data }: NodeProps<PanelNode>) {
           match={category === null ? null : { category, count: focus?.counts.get(id) ?? 0 }}
         />
       </button>
-      {/* nowheel: the wheel scrolls the rows here instead of zooming the map. */}
-      <ul className={data.scrolls ? "nowheel" : undefined} onWheel={onWheel}>
+      {/* nowheel: the wheel scrolls the rows here instead of zooming the map. nodrag: rows don't drag the panel. */}
+      <ul className={`nodrag ${data.scrolls ? "nowheel" : ""}`} onWheel={onWheel}>
         {data.scrolls && (
           <OffscreenRow
             handle={ABOVE_HANDLE}
