@@ -1,11 +1,13 @@
 "use client";
 
 import {
+  MarkerType,
   ReactFlow,
   ReactFlowProvider,
   getViewportForBounds,
   useReactFlow,
   useStore,
+  type BuiltInEdge,
   type Edge as FlowEdge,
   type NodeTypes,
 } from "@xyflow/react";
@@ -111,8 +113,8 @@ function MapCanvas({
 
   const flowEdges = useMemo(
     () => {
-      const dim: FlowEdge[] = [];
-      const bright: FlowEdge[] = [];
+      const dim: BuiltInEdge[] = [];
+      const bright: BuiltInEdge[] = [];
       for (const e of view.edges) {
         // Direction only gets colour once there's a selection for it to be
         // relative to: green flows into it, amber flows out of it.
@@ -121,17 +123,30 @@ function MapCanvas({
         const outOfFocus =
           focus !== null &&
           !(focus.endpoints.has(endpointKey(e.source, e.sourceHandle)) && focus.endpoints.has(endpointKey(e.target, e.targetHandle)));
-        (stroke ? bright : dim).push({
+
+        const isHighlighted = !!stroke;
+        const opacity = isHighlighted ? 1 : (lit && !stroke) || outOfFocus ? 0.12 : 0.45;
+
+        (isHighlighted ? bright : dim).push({
           id: e.id,
+          type: "default",
+          pathOptions: {
+            curvature: 0.25,
+          },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            width: 14,
+            height: 14,
+            color: stroke ?? "var(--edge)",
+          },
           source: e.source,
           sourceHandle: e.sourceHandle,
           target: e.target,
           targetHandle: e.targetHandle,
           style: {
-            // Thickness says how many imports one line stands for, gently.
-            strokeWidth: Math.min(2.5, 0.75 + Math.log2(e.count) / 3),
-            stroke,
-            opacity: (lit && !stroke) || outOfFocus ? 0.15 : 1,
+            strokeWidth: Math.min(2.5, (isHighlighted ? 1.6 : 1.1) + Math.log2(e.count) / 4),
+            stroke: stroke ?? "var(--edge)",
+            opacity,
           },
         });
       }
